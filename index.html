@@ -1,327 +1,566 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Ant Colony Simulator</title>
-
-<style>
-
-body{
-margin:0;
-overflow:hidden;
-background:#1a1a1a;
-font-family:monospace;
-}
-
-canvas{
-display:block;
-}
-
-#ui{
-position:absolute;
-top:10px;
-left:10px;
-color:white;
-background:rgba(0,0,0,0.6);
-padding:10px;
-border-radius:6px;
-}
-
-</style>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ant Farm Simulation</title>
+    <style>
+        body { margin: 0; background-color: #f0f0f0; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; }
+        #container { position: relative; max-width: 2800px; max-height: 5600px; width: 100%; height: 100%; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #d2b48c; } /* Sandy background */
+        #nav { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); }
+        button { font-size: 20px; margin: 0 10px; }
+        #statsPanel { position: absolute; top: 10px; right: 10px; background: rgba(255, 255, 255, 0.8); padding: 10px; border: 1px solid #000; display: none; max-width: 300px; }
+        #statsBtn { position: absolute; top: 10px; right: 10px; }
+    </style>
 </head>
-
 <body>
-
-<canvas id="game"></canvas>
-
-<div id="ui">
-<div id="time"></div>
-<div id="colonies"></div>
-<div id="population"></div>
-</div>
-
-<script>
-
-const canvas=document.getElementById("game")
-const ctx=canvas.getContext("2d")
-
-let WIDTH
-let HEIGHT
-
-function resize(){
-
-WIDTH=window.innerWidth
-HEIGHT=window.innerHeight
-
-canvas.width=WIDTH
-canvas.height=HEIGHT
-
-generateTerrain()
-
-}
-
-window.addEventListener("resize",resize)
-resize()
-
-let terrain=[]
-
-function generateTerrain(){
-
-terrain=[]
-
-for(let i=0;i<250;i++){
-
-terrain.push({
-x:Math.random()*WIDTH,
-y:Math.random()*HEIGHT,
-r:10+Math.random()*40
-})
-
-}
-
-}
-
-function drawTerrain(){
-
-ctx.fillStyle="#c9a56b"
-ctx.fillRect(0,0,WIDTH,HEIGHT)
-
-ctx.fillStyle="#b8935a"
-
-terrain.forEach(t=>{
-
-ctx.beginPath()
-ctx.arc(t.x,t.y,t.r,0,Math.PI*2)
-ctx.fill()
-
-})
-
-}
-
-class Food{
-
-constructor(x,y){
-
-this.x=x
-this.y=y
-this.size=3+Math.random()*3
-
-}
-
-draw(){
-
-ctx.fillStyle="#4CAF50"
-
-ctx.beginPath()
-ctx.arc(this.x,this.y,this.size,0,Math.PI*2)
-ctx.fill()
-
-}
-
-}
-
-let foods=[]
-
-function spawnFoodCluster(){
-
-let x=Math.random()*WIDTH
-let y=Math.random()*HEIGHT
-
-for(let i=0;i<20;i++){
-
-foods.push(new Food(
-x+(Math.random()*50-25),
-y+(Math.random()*50-25)
-))
-
-}
-
-}
-
-class Ant{
-
-constructor(x,y,colony){
-
-this.x=x
-this.y=y
-
-this.colony=colony
-
-this.dir=Math.random()*Math.PI*2
-this.speed=0.8+Math.random()*0.6
-
-this.carry=false
-
-}
-
-move(){
-
-this.dir+=(Math.random()-0.5)*0.4
-
-this.x+=Math.cos(this.dir)*this.speed
-this.y+=Math.sin(this.dir)*this.speed
-
-if(this.x<0||this.x>WIDTH)this.dir=Math.PI-this.dir
-if(this.y<0||this.y>HEIGHT)this.dir=-this.dir
-
-}
-
-draw(){
-
-ctx.save()
-
-ctx.translate(this.x,this.y)
-ctx.rotate(this.dir)
-
-ctx.fillStyle=this.colony.color
-
-ctx.beginPath()
-ctx.ellipse(-4,0,4,3,0,0,Math.PI*2)
-ctx.fill()
-
-ctx.beginPath()
-ctx.ellipse(0,0,3,2,0,0,Math.PI*2)
-ctx.fill()
-
-ctx.beginPath()
-ctx.ellipse(4,0,2,2,0,0,Math.PI*2)
-ctx.fill()
-
-ctx.restore()
-
-}
-
-}
-
-class Colony{
-
-constructor(x,y){
-
-this.x=x
-this.y=y
-
-this.color=`hsl(${Math.random()*360},70%,50%)`
-
-this.ants=[]
-
-for(let i=0;i<30;i++){
-
-this.ants.push(new Ant(x,y,this))
-
-}
-
-}
-
-update(){
-
-this.ants.forEach(a=>{
-
-a.move()
-
-foods.forEach((f,i)=>{
-
-let d=Math.hypot(a.x-f.x,a.y-f.y)
-
-if(d<6 && !a.carry){
-
-a.carry=true
-foods.splice(i,1)
-
-}
-
-})
-
-})
-
-}
-
-draw(){
-
-ctx.fillStyle="#5d4037"
-
-ctx.beginPath()
-ctx.arc(this.x,this.y,10,0,Math.PI*2)
-ctx.fill()
-
-ctx.strokeStyle=this.color
-ctx.lineWidth=2
-
-ctx.beginPath()
-ctx.arc(this.x,this.y,14,0,Math.PI*2)
-ctx.stroke()
-
-this.ants.forEach(a=>a.draw())
-
-}
-
-}
-
-let colonies=[]
-let simTime=0
-
-function spawnColony(){
-
-colonies.push(new Colony(
-Math.random()*WIDTH,
-Math.random()*HEIGHT
-))
-
-}
-
-function update(){
-
-simTime++
-
-colonies.forEach(c=>c.update())
-
-if(Math.random()<0.02)
-spawnFoodCluster()
-
-}
-
-function draw(){
-
-drawTerrain()
-
-foods.forEach(f=>f.draw())
-
-colonies.forEach(c=>c.draw())
-
-}
-
-function updateUI(){
-
-let pop=0
-
-colonies.forEach(c=>pop+=c.ants.length)
-
-document.getElementById("time").textContent="Time: "+Math.floor(simTime/60)
-document.getElementById("colonies").textContent="Colonies: "+colonies.length
-document.getElementById("population").textContent="Population: "+pop
-
-}
-
-function loop(){
-
-update()
-draw()
-updateUI()
-
-requestAnimationFrame(loop)
-
-}
-
-spawnColony()
-spawnColony()
-spawnFoodCluster()
-
-loop()
-
-</script>
-
+    <div id="container">
+        <canvas id="antFarm"></canvas>
+        <div id="nav">
+            <button id="leftBtn">&lt;</button>
+            <button id="rightBtn">&gt;</button>
+            <button id="lowFpsBtn">Toggle Low FPS Mode</button>
+        </div>
+        <button id="statsBtn">Stats</button>
+        <div id="statsPanel">
+            <h3>Ant Farm Stats</h3>
+            <p id="timeLive"></p>
+            <p id="activeAnts"></p>
+            <p id="queenStatus"></p>
+            <p id="eggs"></p>
+            <p id="larvae"></p>
+            <p id="pupae"></p>
+            <p id="totalBrood"></p>
+            <p id="chambers"></p>
+            <p id="foragingOutside"></p>
+            <p id="missingAnts"></p>
+            <p id="predatedAnts"></p>
+            <p id="totalAntsBorn"></p>
+            <p id="totalFoodCollected"></p>
+            <p id="successfulForages"></p>
+            <p id="expansionCount"></p>
+            <p id="totalTunnels"></p>
+            <p id="foodStock"></p>
+            <p id="starvedAnts"></p>
+            <p id="totalDeaths"></p>
+            <p id="maxPopulation"></p>
+            <p id="colonyStatus"></p>
+        </div>
+    </div>
+    <script>
+        const container = document.getElementById('container');
+        const canvas = document.getElementById('antFarm');
+        const ctx = canvas.getContext('2d');
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        const lowFpsBtn = document.getElementById('lowFpsBtn');
+        const statsBtn = document.getElementById('statsBtn');
+        const statsPanel = document.getElementById('statsPanel');
+
+        // Simulation parameters
+        const MAX_WIDTH = 2800;
+        const MAX_HEIGHT = 5600;
+        const ASPECT_RATIO = MAX_WIDTH / MAX_HEIGHT;
+        const QUEEN_SIZE = 10;
+        const ANT_SIZE = 5;
+        const EGG_SIZE = 3;
+        const LARVA_SIZE = 4;
+        const PUPA_SIZE = 4;
+        const TUNNEL_WIDTH = 10;
+        const FOOD_SIZE = 5;
+        const ANT_MAX_AGE = 10000; // Frames (~2-3 min at 60 FPS for workers)
+        const QUEEN_MAX_AGE = 50000; // Longer for queen
+        const FOOD_CONSUMPTION_RATE = 0.001; // Per ant/brood per frame
+        const STARVATION_PROB = 0.01; // Chance to die if foodStock <=0
+
+        // Colors
+        const QUEEN_COLOR = '#8B0000';
+        const WORKER_COLOR = '#000000';
+        const EGG_COLOR = '#FFFFFF';
+        const LARVA_COLOR = '#FFFFE0';
+        const PUPA_COLOR = '#F5F5DC';
+        const TUNNEL_COLOR = '#8B4513';
+        const FOOD_COLOR = '#228B22';
+
+        let WIDTH, HEIGHT;
+        let lowFpsMode = false;
+        let lastUpdateTime = 0;
+        let targetFps = 60;
+        let startTime = performance.now();
+        let foragingOutside = [];
+        let missingAnts = 0;
+        let predatedAnts = 0;
+        let totalAntsBorn = 0;
+        let totalFoodCollected = 0;
+        let successfulForages = 0;
+        let expansionCount = 0;
+        let starvedAnts = 0;
+        let foodStock = 10; // Initial food
+        let maxPopulation = 1; // Starts with queen
+        let collapseTime = null;
+        let colonyCollapsed = false;
+
+        function resizeCanvas() {
+            let winWidth = window.innerWidth;
+            let winHeight = window.innerHeight;
+            let targetWidth = Math.min(winWidth, MAX_WIDTH);
+            let targetHeight = targetWidth / ASPECT_RATIO;
+            if (targetHeight > winHeight) {
+                targetHeight = Math.min(winHeight, MAX_HEIGHT);
+                targetWidth = targetHeight * ASPECT_RATIO;
+            }
+            if (targetWidth > MAX_WIDTH) targetWidth = MAX_WIDTH;
+            if (targetHeight > MAX_HEIGHT) targetHeight = MAX_HEIGHT;
+
+            container.style.width = `${targetWidth}px`;
+            container.style.height = `${targetHeight}px`;
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+            WIDTH = targetWidth;
+            HEIGHT = targetHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Toggle low FPS mode
+        lowFpsBtn.addEventListener('click', () => {
+            lowFpsMode = !lowFpsMode;
+            targetFps = lowFpsMode ? 30 : 60;
+            lowFpsBtn.textContent = lowFpsMode ? 'Disable Low FPS Mode' : 'Toggle Low FPS Mode';
+        });
+
+        // Toggle stats panel
+        statsBtn.addEventListener('click', () => {
+            statsPanel.style.display = statsPanel.style.display === 'none' ? 'block' : 'none';
+        });
+
+        class Ant {
+            constructor(x, y, frameIndex = 0, type = 'worker') {
+                this.x = x;
+                this.y = y;
+                this.frameIndex = frameIndex;
+                this.type = type;
+                this.size = type === 'queen' ? QUEEN_SIZE : ANT_SIZE;
+                this.color = type === 'queen' ? QUEEN_COLOR : WORKER_COLOR;
+                this.speed = 1 + Math.random() * 1;
+                this.direction = Math.random() * 2 * Math.PI;
+                this.state = 'foraging';
+                this.carrying = null;
+                this.forageTime = 0;
+                this.age = 0;
+                this.maxAge = type === 'queen' ? QUEEN_MAX_AGE : ANT_MAX_AGE;
+            }
+
+            move(frames) {
+                this.age++;
+                this.direction += (Math.random() - 0.5) * 0.5;
+                let dx = Math.cos(this.direction) * this.speed;
+                let dy = Math.sin(this.direction) * this.speed;
+                this.x += dx;
+                this.y += dy;
+
+                if (this.x < 0) {
+                    if (this.state === 'digging' && Math.random() < 0.1) {
+                        let newFrameIndex = this.frameIndex - 1;
+                        if (!frames.has(newFrameIndex)) {
+                            frames.set(newFrameIndex, new Frame(newFrameIndex));
+                            expansionCount++;
+                        }
+                        this.frameIndex = newFrameIndex;
+                        this.x = WIDTH;
+                    } else {
+                        this.direction = Math.PI - this.direction;
+                        this.x = 0;
+                    }
+                } else if (this.x > WIDTH) {
+                    if (this.state === 'digging' && Math.random() < 0.1) {
+                        let newFrameIndex = this.frameIndex + 1;
+                        if (!frames.has(newFrameIndex)) {
+                            frames.set(newFrameIndex, new Frame(newFrameIndex));
+                            expansionCount++;
+                        }
+                        this.frameIndex = newFrameIndex;
+                        this.x = 0;
+                    } else {
+                        this.direction = Math.PI - this.direction;
+                        this.x = WIDTH;
+                    }
+                }
+
+                if (this.y < 0) {
+                    if (this.state === 'foraging' && Math.random() < 0.2) {
+                        ants = ants.filter(a => a !== this);
+                        foragingOutside.push(this);
+                        this.forageTime = 0;
+                    } else {
+                        this.direction = -this.direction;
+                        this.y = 0;
+                    }
+                } else if (this.y > HEIGHT) {
+                    this.direction = -this.direction;
+                    this.y = HEIGHT;
+                }
+
+                if (this.type !== 'queen') this.behave();
+            }
+
+            behave() {
+                const rand = Math.random();
+                if (rand < 0.01) this.state = 'digging';
+                else if (rand < 0.02) this.state = 'caring';
+                else if (rand < 0.03 && !this.carrying) this.state = 'foraging';
+                else this.state = 'wandering';
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x + this.size * Math.cos(this.direction + Math.PI/4), this.y + this.size * Math.sin(this.direction + Math.PI/4));
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x + this.size * Math.cos(this.direction - Math.PI/4), this.y + this.size * Math.sin(this.direction - Math.PI/4));
+                ctx.stroke();
+            }
+        }
+
+        class Brood {
+            constructor(x, y, frameIndex = 0, type, isQueen = false) {
+                this.x = x;
+                this.y = y;
+                this.frameIndex = frameIndex;
+                this.type = type;
+                this.isQueen = isQueen; // For new queen pupa
+                this.size = type === 'egg' ? EGG_SIZE : type === 'larva' ? LARVA_SIZE : PUPA_SIZE;
+                this.color = type === 'egg' ? EGG_COLOR : type === 'larva' ? LARVA_COLOR : PUPA_COLOR;
+                this.age = 0;
+                this.maxAge = type === 'egg' ? 100 : type === 'larva' ? 200 : 300;
+            }
+
+            update() {
+                this.age++;
+                return this.age >= this.maxAge ? this.mature() : null;
+            }
+
+            mature() {
+                if (this.type === 'egg') return 'larva';
+                if (this.type === 'larva') return 'pupa';
+                if (this.type === 'pupa') return this.isQueen ? 'queen' : 'worker';
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.ellipse(this.x, this.y, this.size, this.size * 0.6, 0, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+
+        class Tunnel {
+            constructor(startX, startY, frameIndex = 0) {
+                this.frameIndex = frameIndex;
+                this.points = [{x: startX, y: startY}];
+            }
+
+            extend(x, y) {
+                this.points.push({x, y});
+            }
+
+            draw() {
+                ctx.strokeStyle = TUNNEL_COLOR;
+                ctx.lineWidth = TUNNEL_WIDTH;
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, this.points[0].y);
+                for (let i = 1; i < this.points.length; i++) {
+                    ctx.lineTo(this.points[i].x, this.points[i].y);
+                }
+                ctx.stroke();
+            }
+        }
+
+        class Food {
+            constructor(x, y, frameIndex = 0) {
+                this.x = x;
+                this.y = y;
+                this.frameIndex = frameIndex;
+                this.size = FOOD_SIZE;
+            }
+
+            draw() {
+                ctx.fillStyle = FOOD_COLOR;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+
+        class Frame {
+            constructor(index) {
+                this.index = index;
+                this.tunnels = [new Tunnel(WIDTH / 2, HEIGHT / 2, index)];
+                this.foods = [];
+                if (index !== 0) {
+                    for (let i = 0; i < 5; i++) {
+                        this.foods.push(new Food(Math.random() * WIDTH, Math.random() * HEIGHT, index));
+                    }
+                }
+            }
+        }
+
+        // Simulation state
+        let frames = new Map([[0, new Frame(0)]]);
+        let ants = [new Ant(WIDTH / 2, HEIGHT / 2, 0, 'queen')];
+        let broods = [];
+        let foods = [];
+        for (let i = 0; i < 5; i++) {
+            foods.push(new Food(Math.random() * WIDTH, Math.random() * HEIGHT, 0));
+        }
+
+        let currentFrameIndex = 0;
+
+        // Nav buttons
+        leftBtn.addEventListener('click', () => {
+            if (frames.has(currentFrameIndex - 1)) currentFrameIndex--;
+            updateNav();
+        });
+        rightBtn.addEventListener('click', () => {
+            if (frames.has(currentFrameIndex + 1)) currentFrameIndex++;
+            updateNav();
+        });
+
+        function updateNav() {
+            leftBtn.disabled = !frames.has(currentFrameIndex - 1);
+            rightBtn.disabled = !frames.has(currentFrameIndex + 1);
+        }
+        updateNav();
+
+        function resetColony() {
+            // Start with a new queen pupa
+            frames = new Map([[0, new Frame(0)]]);
+            ants = [];
+            broods = [new Brood(WIDTH / 2, HEIGHT / 2, 0, 'pupa', true)]; // Special queen pupa
+            foods = [];
+            for (let i = 0; i < 5; i++) {
+                foods.push(new Food(Math.random() * WIDTH, Math.random() * HEIGHT, 0));
+            }
+            foragingOutside = [];
+            foodStock = 10;
+            colonyCollapsed = false;
+            collapseTime = null;
+            currentFrameIndex = 0;
+        }
+
+        function update() {
+            if (colonyCollapsed) {
+                if (performance.now() - collapseTime >= 3600000) { // 1 hour in ms
+                    resetColony();
+                }
+                return; // Skip updates during collapse wait
+            }
+
+            const queen = ants.find(a => a.type === 'queen');
+            const population = ants.length + broods.length;
+            if (population > maxPopulation) maxPopulation = population;
+
+            // Consume food
+            foodStock -= (ants.length + broods.length) * FOOD_CONSUMPTION_RATE;
+
+            // Lay eggs if food available
+            if (queen && foodStock > 0 && Math.random() < 0.01 * (ants.length / 10)) {
+                broods.push(new Brood(queen.x + Math.random() * 10 - 5, queen.y + Math.random() * 10 - 5, queen.frameIndex, 'egg'));
+            }
+
+            // Update broods
+            broods = broods.filter(b => {
+                const matured = b.update();
+                if (matured) {
+                    if (matured === 'larva') {
+                        broods.push(new Brood(b.x, b.y, b.frameIndex, 'larva', b.isQueen));
+                    } else if (matured === 'pupa') {
+                        broods.push(new Brood(b.x, b.y, b.frameIndex, 'pupa', b.isQueen));
+                    } else if (matured === 'worker' || matured === 'queen') {
+                        ants.push(new Ant(b.x, b.y, b.frameIndex, matured));
+                        if (matured === 'worker') totalAntsBorn++;
+                    }
+                    return false;
+                }
+                return true;
+            });
+
+            // Update ants inside
+            ants = ants.filter(ant => {
+                ant.move(frames);
+
+                // Age death
+                if (ant.age > ant.maxAge) {
+                    starvedAnts++; // Count as starved for stats, or add aged
+                    return false;
+                }
+
+                // Starvation death
+                if (foodStock <= 0 && Math.random() < STARVATION_PROB) {
+                    starvedAnts++;
+                    return false;
+                }
+
+                const currentFrame = frames.get(ant.frameIndex);
+                if (ant.state === 'digging' && Math.random() < 0.05) {
+                    const nearestTunnel = currentFrame.tunnels[Math.floor(Math.random() * currentFrame.tunnels.length)];
+                    nearestTunnel.extend(ant.x, ant.y);
+                    if (Math.random() < 0.1) currentFrame.tunnels.push(new Tunnel(ant.x, ant.y, ant.frameIndex));
+                }
+
+                if (ant.state === 'foraging' && !ant.carrying) {
+                    foods = foods.filter((food) => {
+                        if (food.frameIndex === ant.frameIndex) {
+                            const dist = Math.hypot(ant.x - food.x, ant.y - food.y);
+                            if (dist < ANT_SIZE + FOOD_SIZE) {
+                                ant.carrying = food;
+                                ant.state = 'carrying';
+                                return false;
+                            }
+                        }
+                        return true;
+                    });
+                }
+
+                if (ant.state === 'carrying') {
+                    if (ant.frameIndex === queen?.frameIndex) {
+                        const dx = queen.x - ant.x;
+                        const dy = queen.y - ant.y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist > 10) {
+                            ant.x += (dx / dist) * ant.speed * 2;
+                            ant.y += (dy / dist) * ant.speed * 2;
+                        } else {
+                            ant.carrying = null;
+                            ant.state = 'wandering';
+                            totalFoodCollected++;
+                            foodStock += 1; // Each food drop adds to stock
+                            if (Math.random() < 0.2) {
+                                const randomFrame = Array.from(frames.keys())[Math.floor(Math.random() * frames.size)];
+                                foods.push(new Food(Math.random() * WIDTH, Math.random() * HEIGHT, randomFrame));
+                            }
+                        }
+                    } else {
+                        const targetEdge = ant.frameIndex > queen?.frameIndex ? 0 : WIDTH;
+                        const dx = targetEdge - ant.x;
+                        ant.x += Math.sign(dx) * ant.speed * 2;
+                        ant.y += (Math.random() - 0.5) * ant.speed;
+                    }
+                }
+                return true;
+            });
+
+            // Update foraging outside ants
+            foragingOutside = foragingOutside.filter(ant => {
+                ant.forageTime++;
+                ant.age++; // Continue aging outside
+                if (Math.random() < 0.005) {
+                    ant.y = 0;
+                    ant.state = 'carrying';
+                    ant.carrying = { dummy: true };
+                    ants.push(ant);
+                    successfulForages++;
+                    foodStock += 1; // Outside forage adds food
+                    return false;
+                } else if (Math.random() < 0.001) {
+                    missingAnts++;
+                    return false;
+                } else if (Math.random() < 0.001) {
+                    predatedAnts++;
+                    return false;
+                }
+                return true;
+            });
+
+            // Check for collapse
+            if (ants.length === 0 && broods.length === 0 && foragingOutside.length === 0) {
+                colonyCollapsed = true;
+                collapseTime = performance.now();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            const currentFrame = frames.get(currentFrameIndex);
+            if (currentFrame) {
+                currentFrame.tunnels.forEach(t => t.draw());
+            }
+
+            foods.filter(f => f.frameIndex === currentFrameIndex).forEach(f => f.draw());
+            broods.filter(b => b.frameIndex === currentFrameIndex).forEach(b => b.draw());
+            ants.filter(a => a.frameIndex === currentFrameIndex).forEach(a => a.draw());
+
+            ants.filter(a => a.frameIndex === currentFrameIndex && a.carrying).forEach(a => {
+                ctx.fillStyle = FOOD_COLOR;
+                ctx.beginPath();
+                ctx.arc(a.x + ANT_SIZE, a.y, FOOD_SIZE / 2, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+
+        function updateStats() {
+            const elapsed = (performance.now() - startTime) / 1000;
+            const days = Math.floor(elapsed / 86400);
+            const hours = Math.floor((elapsed % 86400) / 3600);
+            const minutes = Math.floor((elapsed % 3600) / 60);
+            const seconds = Math.floor(elapsed % 60);
+            document.getElementById('timeLive').textContent = `Time Live: ${days}d ${hours}h ${minutes}m ${seconds}s`;
+
+            const workers = ants.filter(a => a.type !== 'queen').length;
+            document.getElementById('activeAnts').textContent = `Active Workers: ${workers}`;
+            document.getElementById('queenStatus').textContent = `Queen: ${ants.some(a => a.type === 'queen') ? 'Alive' : 'Dead'}`;
+
+            const eggs = broods.filter(b => b.type === 'egg').length;
+            const larvae = broods.filter(b => b.type === 'larva').length;
+            const pupae = broods.filter(b => b.type === 'pupa').length;
+            document.getElementById('eggs').textContent = `Eggs: ${eggs}`;
+            document.getElementById('larvae').textContent = `Larvae: ${larvae}`;
+            document.getElementById('pupae').textContent = `Pupae: ${pupae}`;
+            document.getElementById('totalBrood').textContent = `Total Brood: ${eggs + larvae + pupae}`;
+
+            document.getElementById('chambers').textContent = `Chambers: ${frames.size}`;
+
+            document.getElementById('foragingOutside').textContent = `Foraging Outside: ${foragingOutside.length}`;
+            document.getElementById('missingAnts').textContent = `Missing Ants: ${missingAnts}`;
+            document.getElementById('predatedAnts').textContent = `Predated Ants: ${predatedAnts}`;
+
+            document.getElementById('totalAntsBorn').textContent = `Total Ants Born: ${totalAntsBorn}`;
+            document.getElementById('totalFoodCollected').textContent = `Total Food Collected: ${totalFoodCollected}`;
+            document.getElementById('successfulForages').textContent = `Successful Forages: ${successfulForages}`;
+            document.getElementById('expansionCount').textContent = `Expansions: ${expansionCount}`;
+
+            let totalTunnels = 0;
+            frames.forEach(f => { totalTunnels += f.tunnels.length; });
+            document.getElementById('totalTunnels').textContent = `Total Tunnel Branches: ${totalTunnels}`;
+
+            document.getElementById('foodStock').textContent = `Food Stock: ${Math.floor(foodStock)}`;
+            document.getElementById('starvedAnts').textContent = `Starved/Aged Ants: ${starvedAnts}`;
+            document.getElementById('totalDeaths').textContent = `Total Deaths: ${missingAnts + predatedAnts + starvedAnts}`;
+            document.getElementById('maxPopulation').textContent = `Max Population: ${maxPopulation}`;
+            document.getElementById('colonyStatus').textContent = `Colony Status: ${colonyCollapsed ? 'Collapsed (Reset in ~1 hour)' : 'Active'}`;
+        }
+
+        function loop(timestamp) {
+            const delta = timestamp - lastUpdateTime;
+            if (delta > 1000 / targetFps) {
+                update();
+                draw();
+                updateStats();
+                lastUpdateTime = timestamp;
+            }
+            requestAnimationFrame(loop);
+        }
+
+        requestAnimationFrame(loop);
+    </script>
 </body>
 </html>
