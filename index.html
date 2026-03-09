@@ -3,11 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-
 <title>Ant Ecosystem Simulator</title>
-
+<link rel="icon" type="image/png" href="ant.png">
+<meta property="og:title" content="Ant Ecosystem Simulator">
+<meta property="og:description" content="A living evolving ant ecosystem with wars, disasters, Twitch interaction and genetic evolution.">
+<meta property="og:image" content="https://goblinbuggirl.github.io/preview.png">
+<meta property="og:type" content="website">
 <script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
-
 <style>
 
 body{
@@ -34,47 +36,33 @@ color:white;
 }
 
 .panel{
-background:rgba(0,0,0,0.6);
+background:rgba(0,0,0,0.65);
 padding:10px;
 border-radius:6px;
-min-width:150px;
+min-width:180px;
 }
 
 #eventFeed{
-max-height:140px;
+max-height:150px;
 overflow:hidden;
 font-size:12px;
 }
 
 </style>
 </head>
-
 <body>
-
-<canvas id="sim"></canvas>
-
 <div id="overlay">
-
 <div class="panel">
-<b>Colony</b>
-<div id="gen">Gen:1</div>
-<div id="pop">Pop:1</div>
-<div id="species">Species</div>
+<b>Ecosystem</b>
+<div id="time">Time</div>
+<div id="colonies">Colonies</div>
+<div id="population">Population</div>
 </div>
-
-<div class="panel">
-<b>Food</b>
-<div id="food">Food:0</div>
-<div id="collected">Collected:0</div>
-</div>
-
 <div class="panel">
 <b>Events</b>
 <div id="eventFeed"></div>
 </div>
-
 </div>
-
 <script>
 
 /* ================= CANVAS ================= */
@@ -97,13 +85,7 @@ resize()
 
 /* ================= CAMERA ================= */
 
-let camera={
-x:0,y:0,
-zoom:1,
-targetX:0,targetY:0,
-targetZoom:1
-}
-
+let camera={x:0,y:0,zoom:1,targetX:0,targetY:0,targetZoom:1}
 let cameraTargets=[]
 
 function addCameraTarget(x,y,z=2,t=400){
@@ -154,31 +136,6 @@ feed.removeChild(feed.lastChild)
 
 }
 
-/* ================= SPECIES ================= */
-
-const speciesNames=[
-"Sand Diggers",
-"Red Foragers",
-"Emerald Runners",
-"Night Hunters",
-"Tunnel Kings",
-"Stone Burrowers",
-"Amber Gatherers"
-]
-
-function randomSpecies(){
-
-return{
-name:speciesNames[Math.floor(Math.random()*speciesNames.length)],
-color:`hsl(${Math.random()*360},70%,45%)`,
-speed:1+Math.random()*0.5,
-explore:0.3+Math.random()*0.4
-}
-
-}
-
-let species=randomSpecies()
-
 /* ================= PHEROMONES ================= */
 
 const PHEROMONE_SIZE=20
@@ -200,14 +157,11 @@ function evaporate(){
 
 for(let x=0;x<pheromones.length;x++)
 for(let y=0;y<pheromones[x].length;y++)
-pheromones[x][y]*=0.996
+pheromones[x][y]*=0.995
 
 }
 
-/* ================= ENTITIES ================= */
-
-const ANT_MAX_AGE=15000
-const QUEEN_MAX_AGE=70000
+/* ================= FOOD ================= */
 
 class Food{
 
@@ -225,24 +179,45 @@ ctx.fill()
 
 }
 
+let foods=[]
+
+function spawnFoodCluster(){
+
+let x=Math.random()*WIDTH
+let y=Math.random()*HEIGHT
+
+for(let i=0;i<15;i++){
+
+foods.push(new Food(
+x+(Math.random()*60-30),
+y+(Math.random()*60-30)
+))
+
+}
+
+addEvent("🍄 Food cluster appeared")
+
+addCameraTarget(x,y,2,250)
+
+}
+
+/* ================= ANT ================= */
+
+const ANT_MAX_AGE=15000
+
 class Ant{
 
-constructor(x,y,type="worker",colony=0){
+constructor(x,y,colony){
 
 this.x=x
 this.y=y
-this.type=type
 this.colony=colony
 
-this.size=type==="queen"?8:4
-
-this.speed=species.speed+Math.random()*0.2
+this.speed=colony.speed
 this.dir=Math.random()*Math.PI*2
 
 this.carry=false
 this.age=0
-
-this.maxAge=type==="queen"?QUEEN_MAX_AGE:ANT_MAX_AGE
 
 }
 
@@ -260,7 +235,7 @@ for(let dy=-1;dy<=1;dy++){
 let x=gx+dx
 let y=gy+dy
 
-if(pheromones[x]&&pheromones[x][y]>best){
+if(pheromones[x] && pheromones[x][y]>best){
 
 best=pheromones[x][y]
 bestDir=Math.atan2(dy,dx)
@@ -269,7 +244,8 @@ bestDir=Math.atan2(dy,dx)
 
 }
 
-if(best>0)this.dir=bestDir
+if(best>0)
+this.dir+=(bestDir-this.dir)*0.25
 
 }
 
@@ -277,10 +253,10 @@ move(){
 
 this.age++
 
-if(Math.random()<species.explore)
-this.dir+=(Math.random()-0.5)*0.7
+if(Math.random()<this.colony.explore)
+this.dir+=(Math.random()-0.5)
 
-if(!this.carry)this.follow()
+this.follow()
 
 this.x+=Math.cos(this.dir)*this.speed
 this.y+=Math.sin(this.dir)*this.speed
@@ -292,10 +268,10 @@ if(this.y<0||this.y>HEIGHT)this.dir=-this.dir
 
 draw(){
 
-ctx.fillStyle=this.type==="queen"?"#8B0000":species.color
+ctx.fillStyle=this.colony.color
 
 ctx.beginPath()
-ctx.arc(this.x,this.y,this.size,0,Math.PI*2)
+ctx.arc(this.x,this.y,3,0,Math.PI*2)
 ctx.fill()
 
 if(this.carry){
@@ -312,109 +288,82 @@ ctx.fill()
 
 }
 
+/* ================= GENETICS ================= */
+
+function mutate(v,amount){
+
+return v+(Math.random()*amount*2-amount)
+
+}
+
 /* ================= COLONY ================= */
 
-let ants=[]
-let foods=[]
+class Colony{
 
-let generation=1
-let collected=0
+constructor(x,y,traits=null){
 
-function spawnFood(x=Math.random()*WIDTH,y=Math.random()*HEIGHT){
-foods.push(new Food(x,y))
+this.x=x
+this.y=y
+
+if(traits){
+
+this.speed=mutate(traits.speed,0.1)
+this.explore=mutate(traits.explore,0.1)
+this.aggression=mutate(traits.aggression,0.1)
+
+}else{
+
+this.speed=1+Math.random()*0.4
+this.explore=0.2+Math.random()*0.3
+this.aggression=Math.random()
+
 }
 
-function initColony(){
+this.color=`hsl(${Math.random()*360},70%,50%)`
 
-ants=[]
-foods=[]
-
-ants.push(new Ant(WIDTH/2,HEIGHT/2,"queen"))
+this.ants=[]
 
 for(let i=0;i<20;i++)
-spawnFood()
+this.ants.push(new Ant(x,y,this))
 
-addEvent("🌱 New colony founded")
-
-}
-
-/* ================= DISASTERS ================= */
-
-function flood(){
-
-addEvent("💧 Flood!")
-
-let kill=Math.floor(ants.length*0.25)
-ants.splice(0,kill)
+addEvent("👑 New colony founded")
 
 }
 
-function raid(){
+update(){
 
-addEvent("⚔ Rival ants raid!")
+for(let i=this.ants.length-1;i>=0;i--){
 
-let kill=Math.floor(ants.length*0.2)
-ants.splice(0,kill)
-
-}
-
-/* ================= EVOLUTION ================= */
-
-function evolve(){
-
-generation++
-
-species=randomSpecies()
-
-addEvent("🧬 Evolution: "+species.name)
-
-}
-
-/* ================= UPDATE ================= */
-
-function update(){
-
-evaporate()
-
-for(let i=ants.length-1;i>=0;i--){
-
-let a=ants[i]
+let a=this.ants[i]
 
 a.move()
 
-if(a.age>a.maxAge){
-ants.splice(i,1)
+if(a.age>ANT_MAX_AGE){
+this.ants.splice(i,1)
 continue
 }
-
-if(!a.carry){
 
 for(let j=foods.length-1;j>=0;j--){
 
 let f=foods[j]
+
 let d=Math.hypot(a.x-f.x,a.y-f.y)
 
-if(d<8){
+if(d<6 && !a.carry){
 
 a.carry=true
 foods.splice(j,1)
 
-addCameraTarget(a.x,a.y,2.5,300)
-
-break
+addCameraTarget(a.x,a.y,2.5,200)
 
 }
 
 }
 
-}else{
+if(a.carry){
 
-let queen=ants.find(x=>x.type==="queen")
-
-if(!queen)continue
-
-let dx=queen.x-a.x
-let dy=queen.y-a.y
+let dx=this.x-a.x
+let dy=this.y-a.y
 
 let dist=Math.hypot(dx,dy)
 
@@ -422,10 +371,8 @@ if(dist<10){
 
 a.carry=false
 
-collected++
-
-if(Math.random()<0.45)
-ants.push(new Ant(queen.x,queen.y))
+if(Math.random()<0.5)
+this.ants.push(new Ant(this.x,this.y,this))
 
 }else{
 
@@ -434,30 +381,67 @@ a.y+=dy/dist*a.speed*2
 
 }
 
-let gx=Math.floor(a.x/PHEROMONE_SIZE)
-let gy=Math.floor(a.y/PHEROMONE_SIZE)
-
-if(pheromones[gx]&&pheromones[gx][gy]!=undefined)
-pheromones[gx][gy]+=2
+}
 
 }
 
 }
 
-if(foods.length<30&&Math.random()<0.03)
-spawnFood()
+draw(){
 
-if(Math.random()<0.0005)raid()
-if(Math.random()<0.0004)flood()
+ctx.fillStyle="#8B0000"
 
-if(ants.length===0){
+ctx.beginPath()
+ctx.arc(this.x,this.y,6,0,Math.PI*2)
+ctx.fill()
 
-addEvent("💀 Colony collapse")
-
-evolve()
-initColony()
+this.ants.forEach(a=>a.draw())
 
 }
+
+}
+
+/* ================= ECOSYSTEM ================= */
+
+let colonies=[]
+let simTime=0
+
+function spawnColony(parent=null){
+
+let x=Math.random()*WIDTH
+let y=Math.random()*HEIGHT
+
+if(parent)
+colonies.push(new Colony(x,y,parent))
+else
+colonies.push(new Colony(x,y))
+
+addCameraTarget(x,y,2.5,300)
+
+}
+
+function ecosystemUpdate(){
+
+simTime++
+
+evaporate()
+
+colonies.forEach(c=>c.update())
+
+if(Math.random()<0.003)
+spawnFoodCluster()
+
+if(Math.random()<0.0006 && colonies.length>0){
+
+let parent=colonies[Math.floor(Math.random()*colonies.length)]
+
+spawnColony(parent)
+
+addEvent("🧬 Mutation colony emerged")
+
+}
+
+colonies=colonies.filter(c=>c.ants.length>0)
 
 }
 
@@ -474,21 +458,22 @@ ctx.scale(camera.zoom,camera.zoom)
 ctx.translate(-camera.x,-camera.y)
 
 foods.forEach(f=>f.draw())
-ants.forEach(a=>a.draw())
+colonies.forEach(c=>c.draw())
 
 ctx.restore()
 
 }
 
-/* ================= OVERLAY ================= */
+/* ================= UI ================= */
 
-function updateOverlay(){
+function updateUI(){
 
-document.getElementById("gen").textContent="Gen:"+generation
-document.getElementById("pop").textContent="Pop:"+ants.length
-document.getElementById("food").textContent="Food:"+foods.length
-document.getElementById("collected").textContent="Collected:"+collected
-document.getElementById("species").textContent=species.name
+let pop=0
+colonies.forEach(c=>pop+=c.ants.length)
+
+document.getElementById("time").textContent="Time: "+Math.floor(simTime/60)+"s"
+document.getElementById("colonies").textContent="Colonies: "+colonies.length
+document.getElementById("population").textContent="Population: "+pop
 
 }
 
@@ -509,11 +494,9 @@ if(self)return
 
 if(msg==="!feed"){
 
-spawnFood()
+spawnFoodCluster()
 
 addEvent(tags.username+" fed the ants")
-
-addCameraTarget(Math.random()*WIDTH,Math.random()*HEIGHT,2,300)
 
 }
 
@@ -521,23 +504,28 @@ addCameraTarget(Math.random()*WIDTH,Math.random()*HEIGHT,2,300)
 
 }
 
+startTwitch("goblinbuggirl")
+
 /* ================= LOOP ================= */
 
 function loop(){
 
-update()
+ecosystemUpdate()
 updateCamera()
 draw()
-updateOverlay()
+updateUI()
 
 requestAnimationFrame(loop)
 
 }
 
-initColony()
+spawnColony()
+spawnColony()
+spawnFoodCluster()
+
 loop()
 
 </script>
-
 </body>
 </html>
+:::
