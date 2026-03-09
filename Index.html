@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+<title>Ant Farm Simulator - Stream Edition</title>
+
+<script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
+
+<style>
+
+body{
+margin:0;
+background:#222;
+overflow:hidden;
+font-family:monospace;
+}
+
+#container{
+position:relative;
+width:100vw;
+height:100vh;
+}
+
+canvas{
+position:absolute;
+left:0;
+top:0;
+background:#d2b48c;
+}
+
+#overlay{
+position:absolute;
+top:10px;
+left:10px;
+color:white;
+display:flex;
+gap:10px;
+}
+
+.panel{
+background:rgba(0,0,0,0.6);
+padding:10px;
+border-radius:6px;
+min-width:150px;
+}
+
+#eventFeed{
+max-height:120px;
+overflow:hidden;
+font-size:12px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="container">
+
+<canvas id="sim"></canvas>
+
+<div id="overlay">
+
+<div class="panel">
+<b>Colony</b>
+<div id="gen">Gen:1</div>
+<div id="pop">Pop:1</div>
+</div>
+
+<div class="panel">
+<b>Resources</b>
+<div id="food">Food:0</div>
+<div id="collected">Collected:0</div>
+</div>
+
+<div class="panel">
+<b>Events</b>
+<div id="eventFeed"></div>
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+const canvas=document.getElementById("sim")
+const ctx=canvas.getContext("2d")
+
+let WIDTH,HEIGHT
+
+function resize(){
+
+WIDTH=window.innerWidth
+HEIGHT=window.innerHeight
+
+canvas.width=WIDTH
+canvas.height=HEIGHT
+
+initPheromones()
+
+}
+
+window.addEventListener("resize",resize)
+resize()
+
+/* --------------------- CONSTANTS -------------------- */
+
+const ANT_SIZE=4
+const QUEEN_SIZE=8
+const FOOD_SIZE=4
+
+const PHEROMONE_SIZE=20
+
+const ANT_MAX_AGE=15000
+const QUEEN_MAX_AGE=60000
+
+const PRINCESS_CHANCE=0.02
+
+/* ---------------------- CAMERA ---------------------- */
+
+let camera={
+x:WIDTH/2,
+y:HEIGHT/2,
+zoom:1,
+targetX:WIDTH/2,
+targetY:HEIGHT/2,
+targetZoom:1
+}
+
+let cameraTargets=[]
+
+function addCameraTarget(x,y,z=2,t=400){
+
+cameraTargets.push({x,y,z,t})
+
+}
+
+function updateCamera(){
+
+if(cameraTargets.length){
+
+let c=cameraTargets[0]
+
+camera.targetX=c.x
+camera.targetY=c.y
+camera.targetZoom=c.z
+
+c.t--
+
+if(c.t<=0)cameraTargets.shift()
+
+}else{
+
+camera.targetZoom=0.8
+camera.targetX=WIDTH/2
+camera.targetY=HEIGHT/2
+
+}
+
+camera.x+=(camera.targetX-camera.x)*0.05
+camera.y+=(camera.targetY-camera.y)*0.05
+camera.zoom+=(camera.targetZoom-camera.zoom)*0.05
+
+}
+
+/* ---------------------- GENOME ---------------------- */
+
+let genome={
+speed:1.2,
+exploration:0.4,
+pheromone:1
+}
+
+/* ---------------------- STORAGE ---------------------- */
+
+function save(){
+
+localStorage.setItem("antfarm",JSON.stringify({
+
+ants,
+foods,
+generation,
+genome,
+collected
+
+}))
+
+localStorage.setItem("antfarm_time",Date.now())
+
+}
+
+setInterval(save,30000)
+
+/* ---------------------- EVENTS ---------------------- */
+
+function addEvent(txt){
+
+const feed=document.getElementById("eventFeed")
+
+let d=document.createElement("div")
+d.textContent=txt
+
+feed.prepend(d)
+
+if(feed.children.length>6)
+feed.removeChild(feed.lastChild)
+
+}
+
+/* ---------------------- PHEROMONES ---------------------- */
+
+let pheromones=[]
+
+function initPheromones(){
+
+let cols=Math.ceil(WIDTH/PHEROMONE_SIZE)
+let rows=Math.ceil(HEIGHT/PHEROMONE_SIZE)
+
+pheromones=new Array(cols)
+
+for(let x=0;x<cols;x++)
+pheromones[x]=new Float32Array(rows)
+
+}
+
+function evaporate(){
+
+for(let x=0;x<pheromones.length;x++)
+for(let y=0;y<pheromones[x].length;y++)
+pheromones[x][y]*=0.995
+
+}
+
+/* ---------------------- ENTITIES ---------------------- */
+
+class Food{
+
+constructor(x,y){
+this.x=x
+this.y=y
+}
+
+draw(){
+
+ctx.fillStyle="green"
+
+ctx.beginPath()
+ctx.arc(this.x,this.y,FOOD_SIZE,0,Math.PI*2)
+ctx.fill()
+
+}
+
+}
+
+class Ant{
+
+constructor(x,y,type="worker"){
+
+this.x=x
+this.y=y
+this.type=type
+
+this.size=type==="queen"?QUEEN_SIZE:ANT_SIZE
+
+this.speed=genome.speed+Math.random()*0.3
+
+this.dir=Math.random()*Math.PI*2
+
+this.carry=false
+
+this.age=0
+
+this.maxAge=type==="queen"?QUEEN_MAX_AGE:ANT_MAX_AGE
+
+}
+
+follow(){
+
+let gx=Math.floor(this.x/PHEROMONE_SIZE)
+let gy=Math.floor(this.y/PHEROMONE_SIZE)
+
+let best=0
+let bestDir=this.dir
+
+for(let dx=-1;dx<=1;dx++)
+for(let dy=-1;dy<=1;dy++){
+
+let x=gx+dx
+let y=gy+dy
+
+if(pheromones[x]&&pheromones[x][y]>best){
+
+best=pheromones[x][y]
+bestDir=Math.atan2(dy,dx)
+
+}
+
+}
+
+if(best>0)this.dir=bestDir
+
+}
+
+move(){
+
+this.age++
+
+if(Math.random()<genome.exploration)
+this.dir+=(Math.random()-0.5)*0.8
+
+if(!this.carry)this.follow()
+
+this.x+=Math.cos(this.dir)*this.speed
+this.y+=Math.sin(this.dir)*this.speed
+
+if(this.x<0||this.x>WIDTH)this.dir=Math.PI-this.dir
+if(this.y<0||this.y>HEIGHT)this.dir=-this.dir
+
+}
+
+draw(){
+
+ctx.fillStyle=this.type==="queen"?"#8B0000":"black"
+
+ctx.beginPath()
+ctx.arc(this.x,this.y,this.size,0,Math.PI*2)
+ctx.fill()
+
+if(this.carry){
+
+ctx.fillStyle="green"
+
+ctx.beginPath()
+ctx.arc(this.x+4,this.y,2,0,Math.PI*2)
+ctx.fill()
+
+}
+
+}
+
+}
+
+/* ---------------------- COLONY ---------------------- */
+
+let ants=[]
+let foods=[]
+
+let generation=1
+let collected=0
+let maxPop=1
+
+function spawnFood(x=Math.random()*WIDTH,y=Math.random()*HEIGHT){
+
+foods.push(new Food(x,y))
+
+}
+
+function initColony(){
+
+ants=[]
+foods=[]
+
+ants.push(new Ant(WIDTH/2,HEIGHT/2,"queen"))
+
+for(let i=0;i<15;i++)
+spawnFood()
+
+}
+
+/* ---------------------- EVOLUTION ---------------------- */
+
+function evolve(){
+
+genome.speed+=(Math.random()-0.5)*0.1
+genome.exploration+=(Math.random()-0.5)*0.05
+genome.pheromone+=(Math.random()-0.5)*0.1
+
+}
+
+/* ---------------------- RAID EVENT ---------------------- */
+
+function raid(){
+
+addEvent("⚔ Rival colony raid!")
+
+let kill=Math.floor(ants.length*0.2)
+
+ants.splice(0,kill)
+
+addCameraTarget(WIDTH/2,HEIGHT/2,2.5,600)
+
+}
+
+/* ---------------------- UPDATE ---------------------- */
+
+function update(){
+
+evaporate()
+
+for(let i=ants.length-1;i>=0;i--){
+
+let a=ants[i]
+
+a.move()
+
+if(a.age>a.maxAge){
+
+ants.splice(i,1)
+continue
+
+}
+
+if(!a.carry){
+
+for(let j=foods.length-1;j>=0;j--){
+
+let f=foods[j]
+
+let d=Math.hypot(a.x-f.x,a.y-f.y)
+
+if(d<8){
+
+a.carry=true
+foods.splice(j,1)
+
+addCameraTarget(a.x,a.y,2.5,300)
+
+break
+
+}
+
+}
+
+}else{
+
+let queen=ants.find(x=>x.type==="queen")
+
+if(!queen)continue
+
+let dx=queen.x-a.x
+let dy=queen.y-a.y
+
+let dist=Math.hypot(dx,dy)
+
+if(dist<10){
+
+a.carry=false
+
+collected++
+
+if(Math.random()<0.4)
+ants.push(new Ant(queen.x,queen.y))
+
+}else{
+
+a.x+=dx/dist*a.speed*2
+a.y+=dy/dist*a.speed*2
+
+}
+
+let gx=Math.floor(a.x/PHEROMONE_SIZE)
+let gy=Math.floor(a.y/PHEROMONE_SIZE)
+
+if(pheromones[gx]&&pheromones[gx][gy]!=undefined)
+pheromones[gx][gy]+=2
+
+}
+
+}
+
+if(ants.length>maxPop)
+maxPop=ants.length
+
+if(foods.length<20&&Math.random()<0.02)
+spawnFood()
+
+if(Math.random()<0.0004)
+raid()
+
+if(ants.length===0){
+
+addEvent("💀 Colony collapse")
+
+evolve()
+
+generation++
+
+initColony()
+
+}
+
+}
+
+/* ---------------------- DRAW ---------------------- */
+
+function draw(){
+
+ctx.clearRect(0,0,WIDTH,HEIGHT)
+
+ctx.save()
+
+ctx.translate(WIDTH/2,HEIGHT/2)
+ctx.scale(camera.zoom,camera.zoom)
+ctx.translate(-camera.x,-camera.y)
+
+foods.forEach(f=>f.draw())
+ants.forEach(a=>a.draw())
+
+ctx.restore()
+
+}
+
+/* ---------------------- OVERLAY ---------------------- */
+
+function overlay(){
+
+document.getElementById("gen").textContent="Gen:"+generation
+document.getElementById("pop").textContent="Pop:"+ants.length
+document.getElementById("food").textContent="Food:"+foods.length
+document.getElementById("collected").textContent="Collected:"+collected
+
+}
+
+/* ---------------------- TWITCH ---------------------- */
+
+function startTwitch(channel){
+
+const client=new tmi.Client({
+connection:{reconnect:true},
+channels:[channel]
+})
+
+client.connect()
+
+client.on("message",(ch,tags,msg,self)=>{
+
+if(self)return
+
+if(msg==="!feed"){
+
+spawnFood()
+
+addEvent(tags.username+" fed the ants")
+
+addCameraTarget(Math.random()*WIDTH,Math.random()*HEIGHT,2,300)
+
+}
+
+})
+
+}
+
+/* ---------------------- LOOP ---------------------- */
+
+function loop(){
+
+update()
+updateCamera()
+draw()
+overlay()
+
+requestAnimationFrame(loop)
+
+}
+
+initColony()
+
+loop()
+
+</script>
+
+</body>
+</html>
